@@ -407,7 +407,7 @@ def home():
         res_data=t1.responseData(input_values['redirect_uri'],input_values['client_id'],input_values['secret_key'],
                               input_values['token'],input_values['symbol1'] ,input_values['symbol2'],input_values['days'],
                                  input_values['resolution'], input_values['index_name'] )
-        print(res_data)
+        #print(res_data)
         if(res_data[0] is None or res_data[1] is None or res_data[2] is None):
             data1 = DUMMY_DATA_1
             data2 = DUMMY_DATA_2
@@ -422,7 +422,7 @@ def home():
         # Latest Price Snapshot
         latest_price_1 = data1['candles'][-1][4] if data1.get('candles') and data1['candles'] else 'N/A'
         latest_price_2 = data2['candles'][-1][4] if data2.get('candles') and data2['candles'] else 'N/A'
-        print(latest_price_1,latest_price_2)
+        #print(latest_price_1,latest_price_2)
 
         # Check for the crossing alert
         cross_alert = check_for_cross_alert(data1, data2)
