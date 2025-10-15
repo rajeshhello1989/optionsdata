@@ -82,13 +82,16 @@ def create_oi_bar_chart(options_data, index_name, selected_expiry):
     symbol_date_fragment = ''
     try:
         # Assuming the symbol format is 'NSE:NIFTY25O1424900PE', we extract '25O14'
-        first_option_symbol = next(d['symbol'] for d in options_chain if d.get('strike_price', -1) != -1 and d.get('option_type'))
+        # Filter for entries that are actually options (have strike_price and option_type)
+        first_option_symbol_entry = next(d for d in options_chain if d.get('strike_price', -1) != -1 and d.get('option_type'))
+        first_option_symbol = first_option_symbol_entry['symbol']
 
         # Robustly determine the index name portion
         index_name_upper = index_name.upper()
         if index_name_upper in first_option_symbol:
             fragment_start = first_option_symbol.find(index_name_upper) + len(index_name_upper)
-            symbol_date_fragment = first_option_symbol[fragment_start:fragment_start+5] # Assumes 5 char date format (e.g., 25O14)
+            # This logic assumes a fixed-length date fragment (e.g., 5 chars like '25O14')
+            symbol_date_fragment = first_option_symbol[fragment_start:fragment_start+5]
 
     except (StopIteration, IndexError, TypeError):
         # Fallback if the data structure is inconsistent or empty
@@ -134,6 +137,7 @@ def create_oi_bar_chart(options_data, index_name, selected_expiry):
     # --- Plot 2: Change in OI (Blue for positive, Dark for negative) ---
     # CE OI Change (plots on the Call side)
     ce_ch_color = np.where(oi_pivot['OI_Ch_CE'] > 0, '#00B0FF', '#c91caf')
+    # Use absolute value for height but map color based on sign
     ax.bar(np.array(strikes) - bar_width + bar_offset_ch, np.abs(oi_pivot['OI_Ch_CE']), width=bar_width*0.5, color=ce_ch_color, label='Call OI Change')
 
     # PE OI Change (plots on the Put side)
@@ -364,11 +368,15 @@ def home():
     total_call_oi = OPTIONS_DATA.get('data', {}).get('callOi', 'N/A')
     total_put_oi = OPTIONS_DATA.get('data', {}).get('putOi', 'N/A')
 
+    # Initialize Max OI Snapshot values
+    max_call_oi_strike = 'N/A'
+    max_call_oi_value = 'N/A'
+    max_put_oi_strike = 'N/A'
+    max_put_oi_value = 'N/A'
+
     data1 = DUMMY_DATA_1
     data2 = DUMMY_DATA_2
     options_data = OPTIONS_DATA
-
-
 
 
     # Handle form submission
@@ -399,7 +407,7 @@ def home():
         res_data=t1.responseData(input_values['redirect_uri'],input_values['client_id'],input_values['secret_key'],
                               input_values['token'],input_values['symbol1'] ,input_values['symbol2'],input_values['days'],
                                  input_values['resolution'], input_values['index_name'] )
-        #print(res_data)
+        print(res_data)
         if(res_data[0] is None or res_data[1] is None or res_data[2] is None):
             data1 = DUMMY_DATA_1
             data2 = DUMMY_DATA_2
@@ -418,6 +426,23 @@ def home():
 
         # Check for the crossing alert
         cross_alert = check_for_cross_alert(data1, data2)
+
+        # --- NEW: Extracting Max OI Strikes and Values for Snapshot ---
+        options_chain_snapshot = options_data.get('data', {}).get('optionsChain', [])
+        call_oi_entries = [d for d in options_chain_snapshot if d.get('option_type') == 'CE' and d.get('oi') is not None and d.get('strike_price') is not None]
+        put_oi_entries = [d for d in options_chain_snapshot if d.get('option_type') == 'PE' and d.get('oi') is not None and d.get('strike_price') is not None]
+
+        if call_oi_entries:
+            max_ce_entry = max(call_oi_entries, key=lambda x: x['oi'])
+            max_call_oi_strike = max_ce_entry.get('strike_price', 'N/A')
+            max_call_oi_value = max_ce_entry.get('oi', 'N/A')
+
+        if put_oi_entries:
+            max_pe_entry = max(put_oi_entries, key=lambda x: x['oi'])
+            max_put_oi_strike = max_pe_entry.get('strike_price', 'N/A')
+            max_put_oi_value = max_pe_entry.get('oi', 'N/A')
+        # --- END NEW MAX OI EXTRACTION ---
+
 
         # Generate Price Comparison Chart
         plot_data = create_comparison_chart(
@@ -444,6 +469,22 @@ def home():
         latest_price_1 = data1['candles'][-1][4] if data1.get('candles') and data1['candles'] else 'N/A'
         latest_price_2 = data2['candles'][-1][4] if data2.get('candles') and data2['candles'] else 'N/A'
 
+        # --- NEW: Extracting Max OI Strikes and Values for Snapshot (Initial Load) ---
+        options_chain_snapshot = options_data.get('data', {}).get('optionsChain', [])
+        call_oi_entries = [d for d in options_chain_snapshot if d.get('option_type') == 'CE' and d.get('oi') is not None and d.get('strike_price') is not None]
+        put_oi_entries = [d for d in options_chain_snapshot if d.get('option_type') == 'PE' and d.get('oi') is not None and d.get('strike_price') is not None]
+
+        if call_oi_entries:
+            max_ce_entry = max(call_oi_entries, key=lambda x: x['oi'])
+            max_call_oi_strike = max_ce_entry.get('strike_price', 'N/A')
+            max_call_oi_value = max_ce_entry.get('oi', 'N/A')
+
+        if put_oi_entries:
+            max_pe_entry = max(put_oi_entries, key=lambda x: x['oi'])
+            max_put_oi_strike = max_pe_entry.get('strike_price', 'N/A')
+            max_put_oi_value = max_pe_entry.get('oi', 'N/A')
+        # --- END NEW MAX OI EXTRACTION ---
+
         # Generate initial plots
         plot_data = create_comparison_chart(data1, data2)
         oi_plot_data = create_oi_bar_chart(options_data, input_values['index_name'], input_values['selected_expiry'])
@@ -451,7 +492,7 @@ def home():
 
     refresh_interval_ms = int(input_values['refresh_interval']) * 1000
 
-    # --- HTML Template (Unchanged) ---
+    # --- HTML Template (UPDATED to include Max OI in Snapshot) ---
     template_html = '''
         <!doctype html>
         <html lang="en">
@@ -671,10 +712,29 @@ def home():
                         <p><strong>{{ input_values['symbol2'] }} (Last Close):</strong> <span style="font-size: 1.2em; color: #FF5255;">{{ latest_price_2 }}</span></p>
                     </div>
                     <div class="snapshot-row">
-                        <p><strong>Total Call OI:</strong> <span style="font-size: 1.2em; color: #FF5255;">{{ "{:,}".format(total_call_oi) if total_call_oi != 'N/A' else 'N/A' }}</span></p>
-                        <p><strong>Total Put OI:</strong> <span style="font-size: 1.2em; color: #00C853;">{{ "{:,}".format(total_put_oi) if total_put_oi != 'N/A' else 'N/A' }}</span></p>
+                        <p><strong>Total Call OI:</strong> <span style="font-size: 1.2em; color: #FF5255;">{{ "{:,}".format(total_call_oi) if total_call_oi != 'N/A' and total_call_oi is not none else 'N/A' }}</span></p>
+                        <p><strong>Total Put OI:</strong> <span style="font-size: 1.2em; color: #00C853;">{{ "{:,}".format(total_put_oi) if total_put_oi != 'N/A' and total_put_oi is not none else 'N/A' }}</span></p>
                     </div>
-                </div>
+                    
+                    <hr style="border-top: 1px solid #333; margin: 10px 0;">
+                    <h4 style="color: #FFD700; margin-bottom: 5px;">Max Open Interest (Resistance & Support)</h4>
+                    <div class="snapshot-row">
+                        <p>
+                            <strong>Max Call OI (Resistance):</strong> 
+                            <span style="font-size: 1.1em; color: #FF5255;">
+                                {{ "{:,}".format(max_call_oi_value) if max_call_oi_value != 'N/A' and max_call_oi_value is not none else 'N/A' }} 
+                                {% if max_call_oi_strike != 'N/A' %} @ Strike: {{ max_call_oi_strike }}{% endif %}
+                            </span>
+                        </p>
+                        <p>
+                            <strong>Max Put OI (Support):</strong> 
+                            <span style="font-size: 1.1em; color: #00C853;">
+                                {{ "{:,}".format(max_put_oi_value) if max_put_oi_value != 'N/A' and max_put_oi_value is not none else 'N/A' }} 
+                                {% if max_put_oi_strike != 'N/A' %} @ Strike: {{ max_put_oi_strike }}{% endif %}
+                            </span>
+                        </p>
+                    </div>
+                    </div>
 
                 {% if cross_alert == 'Cross Up' %}
                 <div class="alert-box alert-up">
@@ -711,11 +771,30 @@ def home():
             </div>
 
             <script>
+                // Correct for Python's resolution string inconsistency in the template
+                const resolutionSelect = document.getElementById('resolution');
+                let selectedResolutionValue = resolutionSelect.value;
+                if (!selectedResolutionValue.includes(' ')) {
+                    if (selectedResolutionValue === '1D') {
+                        resolutionSelect.value = '1 day';
+                    } else if (selectedResolutionValue === '1' || selectedResolutionValue === '5' || selectedResolutionValue === '15' || selectedResolutionValue === '30') {
+                         resolutionSelect.value = selectedResolutionValue + ' mins';
+                    } else if (selectedResolutionValue === '60') {
+                        resolutionSelect.value = '60 mins';
+                    }
+                }
+                
                 const refreshIntervalMs = {{ refresh_interval_ms }};
                 const dataForm = document.getElementById('dataForm');
                 
                 if (refreshIntervalMs > 0) {
                     function autoRefresh() {
+                        // Create a temporary input to trick Flask into thinking the request is a POST submission
+                        const tempInput = document.createElement('input');
+                        tempInput.type = 'hidden';
+                        tempInput.name = 'auto_refresh';
+                        tempInput.value = 'true';
+                        dataForm.appendChild(tempInput);
                         dataForm.submit();
                     }
 
@@ -741,8 +820,16 @@ def home():
         latest_price_2=latest_price_2,
         total_call_oi=total_call_oi,
         total_put_oi=total_put_oi,
+        # --- NEW VALUES PASSED TO TEMPLATE ---
+        max_call_oi_strike=max_call_oi_strike,
+        max_call_oi_value=max_call_oi_value,
+        max_put_oi_strike=max_put_oi_strike,
+        max_put_oi_value=max_put_oi_value,
+        # --- END NEW VALUES ---
         now=datetime.datetime.now().strftime('%H:%M:%S')
     )
 
 if __name__ == '__main__':
+    # Setting debug to False when using 'Agg' backend in production is recommended,
+    # but kept as True for development purposes.
     app.run(debug=True)
