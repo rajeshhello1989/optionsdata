@@ -11,13 +11,16 @@ import matplotlib.dates as mdates
 import time
 import pandas as pd
 import numpy as np # Import numpy for data manipulation
-from matplotlib.ticker import FuncFormatter # For Y-axis formatting
+
+# --- NEW PLOTLY IMPORTS ---
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 import liencompfyer as t1
 
 # Initialize the Flask application
 app = Flask(__name__)
 
-# --- Dummy Data for Demonstration (Unchanged) ---
+# --- Dummy Data for Demonstration ---
 DUMMY_DATA_1 = {
     'candles': [[1760327100, 353, 385.4, 317.3, 342.75, 140025], [1760327400, 344.1, 352, 328.05, 339.6, 111075], [1760327700, 339.5, 341.95, 317.8, 320.35, 72225], [1760328000, 320, 323.45, 283, 289, 160950], [1760328300, 288.25, 324.8, 280, 319.5, 270900], [1760328600, 318.9, 332.95, 313, 330.7, 140250], [1760328900, 329.15, 349.35, 323.95, 342.85, 126900], [1760329200, 342.85, 343.75, 317.85, 321.65, 58050], [1760329500, 320, 330.85, 312.15, 326.4, 54825]],
     'code': 200, 's': 'ok'
@@ -35,7 +38,10 @@ OPTIONS_DATA = {'code': 200, 'data': {'callOi': 185190600, 'expiryData': [{'date
 def check_for_cross_alert(data1, data2):
     """
     Checks if the last two data points indicate a recent crossing of the two lines.
-    Returns: 'Cross Up', 'Cross Down', or None
+    Returns:
+        'Cross Up' if Symbol 1 crossed above Symbol 2
+        'Cross Down' if Symbol 1 crossed below Symbol 2
+        None otherwise
     """
     candles1 = data1.get('candles', [])
     candles2 = data2.get('candles', [])
@@ -60,7 +66,7 @@ def check_for_cross_alert(data1, data2):
 
     return None
 
-# --- UPDATED FUNCTION FOR OI BAR CHART (Includes Annotations and LTP Line) ---
+# --- OI BAR CHART FUNCTION (remains the same) ---
 def create_oi_bar_chart(options_data, index_name, selected_expiry):
     """
     Generates a comparison bar chart of Open Interest (OI), Change in OI,
@@ -72,32 +78,27 @@ def create_oi_bar_chart(options_data, index_name, selected_expiry):
     # Find the full expiry date string (e.g., '14-10-2025')
     expiry_date_str = next((item['date'] for item in expiry_data if item['expiry'] == selected_expiry), selected_expiry)
 
-    # --- NIFTY LTP Extraction ---
+    # --- Filtering Logic ---
+    # In a real scenario, the API would return data already filtered by expiry.
     nifty_ltp = None
     index_entry = next((item for item in options_chain if item.get('symbol') == f'NSE:{index_name.upper()}-INDEX'), None)
     if index_entry:
         nifty_ltp = index_entry.get('ltp')
-
-    # --- Filtering Logic (Find Symbol Fragment for Filtering) ---
     symbol_date_fragment = ''
     try:
-        # Assuming the symbol format is 'NSE:NIFTY25O1424900PE', we extract '25O14'
-        # Filter for entries that are actually options (have strike_price and option_type)
-        first_option_symbol_entry = next(d for d in options_chain if d.get('strike_price', -1) != -1 and d.get('option_type'))
-        first_option_symbol = first_option_symbol_entry['symbol']
+        first_option_symbol = next(d['symbol'] for d in options_chain if d.get('strike_price', -1) != -1 and d.get('option_type'))
 
         # Robustly determine the index name portion
         index_name_upper = index_name.upper()
         if index_name_upper in first_option_symbol:
             fragment_start = first_option_symbol.find(index_name_upper) + len(index_name_upper)
-            # This logic assumes a fixed-length date fragment (e.g., 5 chars like '25O14')
-            symbol_date_fragment = first_option_symbol[fragment_start:fragment_start+5]
+            symbol_date_fragment = first_option_symbol[fragment_start:fragment_start+5] # Assumes 5 char date format (e.g., 25O14)
 
     except (StopIteration, IndexError, TypeError):
         # Fallback if the data structure is inconsistent or empty
         pass
 
-    # Filter based on the symbol fragment
+    # Filter based on the symbol fragment (using '25O14' for our dummy data)
     oi_data = [d for d in options_chain
                if d.get('strike_price', -1) != -1
                and d.get('option_type') in ['CE', 'PE']
@@ -135,13 +136,10 @@ def create_oi_bar_chart(options_data, index_name, selected_expiry):
     ax.bar(strikes, oi_pivot['OI_PE'], width=bar_width, align='edge', color='#00C853', alpha=0.8, label='Put OI (Current)')
 
     # --- Plot 2: Change in OI (Blue for positive, Dark for negative) ---
-    # CE OI Change (plots on the Call side)
-    ce_ch_color = np.where(oi_pivot['OI_Ch_CE'] > 0, '#00B0FF', '#c91caf')
-    # Use absolute value for height but map color based on sign
+    ce_ch_color = np.where(oi_pivot['OI_Ch_CE'] > 0, '#00B0FF', '#c91caf') # Blue for increase, Dark Red for decrease
     ax.bar(np.array(strikes) - bar_width + bar_offset_ch, np.abs(oi_pivot['OI_Ch_CE']), width=bar_width*0.5, color=ce_ch_color, label='Call OI Change')
 
-    # PE OI Change (plots on the Put side)
-    pe_ch_color = np.where(oi_pivot['OI_Ch_PE'] > 0, '#00B0FF', '#b6c41a')
+    pe_ch_color = np.where(oi_pivot['OI_Ch_PE'] > 0, '#00B0FF', '#b6c41a') # Blue for increase, Dark Green for decrease
     ax.bar(np.array(strikes) + bar_offset_ch, np.abs(oi_pivot['OI_Ch_PE']), width=bar_width*0.5, color=pe_ch_color, label='Put OI Change')
 
     # --- Plot 3: Previous OI (Markers) ---
@@ -188,16 +186,17 @@ def create_oi_bar_chart(options_data, index_name, selected_expiry):
     ax.tick_params(axis='x', rotation=45, colors='white')
     ax.tick_params(axis='y', colors='white')
 
-    # Custom y-axis formatter (to show millions)
+    # Custom y-axis formatter
     def million_formatter(x, pos):
         return f'{x/1000000:.1f}M'
-    ax.yaxis.set_major_formatter(FuncFormatter(million_formatter))
+
+    ax.yaxis.set_major_formatter(plt.FuncFormatter(million_formatter))
 
     ax.grid(axis='y', linestyle='--', alpha=0.5)
     ax.legend(loc='upper left', ncol=3, facecolor='black', framealpha=0.8, fontsize=10)
 
     # Add a note for OI Change colors
-    fig.text(0.5, 0.01, 'Note: Blue = Net New OI (+ve Change); Darker Shades = OI Unwinding (-ve Change)',
+    fig.text(0.5, 0.01, 'Note: Blue for Net New OI (+ve Change); Darker Shades for OI Unwinding (-ve Change)',
              ha='center', fontsize=10, color='#90CAF9')
 
     fig.tight_layout(rect=[0, 0.04, 1, 1])
@@ -211,9 +210,86 @@ def create_oi_bar_chart(options_data, index_name, selected_expiry):
 
     return plot_data
 
-# --- Rest of the file remains the same ---
-# ... (The rest of the code for create_comparison_chart, get_chart_dpi, get_refresh_interval_seconds, and the Flask routes) ...
+# --- MATPLOTLIB COMPARISON CHART FUNCTION (create_comparison_chart) (Unchanged) ---
+def abccreate_comparison_chart1(data_1, data_2, symbol1='Symbol 1', symbol2='Symbol 2', resolution='5 mins'):
+    candles_1 = data_1.get('candles', [])
+    timestamps_1 = [datetime.datetime.fromtimestamp(c[0]) for c in candles_1]
+    closing_prices_1 = [c[4] for c in candles_1]
 
+    candles_2 = data_2.get('candles', [])
+    timestamps_2 = [datetime.datetime.fromtimestamp(c[0]) for c in candles_2]
+    closing_prices_2 = [c[4] for c in candles_2]
+
+    if not timestamps_1 and not timestamps_2:
+        return None
+
+    plt.style.use('dark_background')
+    fig, ax1 = plt.subplots(figsize=(14, 7))
+
+    has_ax1 = bool(timestamps_1)
+    if has_ax1:
+        color_1 = '#00C853'
+        ax1.set_ylabel(f'Price ({symbol1})', color=color_1, fontsize=14)
+        ax1.plot(timestamps_1, closing_prices_1, color=color_1, linewidth=2, label=f'{symbol1} Price')
+        ax1.tick_params(axis='y', labelcolor=color_1)
+        ax1.grid(True, which='major', linestyle='-', linewidth=0.5, alpha=0.5)
+
+    has_ax2_data = bool(timestamps_2)
+    has_twin_ax = False
+
+    if has_ax2_data:
+        if has_ax1:
+            ax2 = ax1.twinx()
+            color_2 = '#FF5255'
+            ax2.set_ylabel(f'Price ({symbol2})', color=color_2, fontsize=14)
+            ax2.plot(timestamps_2, closing_prices_2, color=color_2, linewidth=2, linestyle='--', label=f'{symbol2} Price')
+            ax2.tick_params(axis='y', labelcolor=color_2)
+            has_twin_ax = True
+        else:
+            color_2 = '#FF5255'
+            ax1.set_ylabel(f'Price ({symbol2})', color=color_2, fontsize=14)
+            ax1.plot(timestamps_2, closing_prices_2, color=color_2, linewidth=2, linestyle='-', label=f'{symbol2} Price')
+            ax1.tick_params(axis='y', labelcolor=color_2)
+            ax1.grid(True, which='major', linestyle='-', linewidth=0.5, alpha=0.5)
+
+    ax1.set_xlabel(f'Time ({resolution} Intervals)', fontsize=14, color='white')
+
+    try:
+        res_minutes = int(resolution.split()[0])
+    except:
+        res_minutes = 5
+
+    ax1.xaxis.set_major_locator(mdates.MinuteLocator(interval=30))
+    ax1.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
+    ax1.xaxis.set_minor_locator(mdates.MinuteLocator(interval=res_minutes))
+    ax1.tick_params(axis='x', rotation=45, colors='white')
+
+    lines, labels = [], []
+    lines1, labels1 = ax1.get_legend_handles_labels()
+    lines.extend(lines1)
+    labels.extend(labels1)
+
+    if has_twin_ax:
+        lines2, labels2 = ax2.get_legend_handles_labels()
+        lines.extend(lines2)
+        labels.extend(labels2)
+
+    if lines:
+        ax1.legend(lines, labels, loc='upper left', facecolor='black', framealpha=0.8, fontsize=12)
+
+    fig.autofmt_xdate(rotation=45)
+    ax1.set_title(f'Price Comparison: {symbol1} vs {symbol2} ({resolution})', fontsize=18, pad=15, color='white')
+    fig.tight_layout()
+
+    img_buffer = io.BytesIO()
+    dynamic_dpi = get_chart_dpi(resolution)
+    plt.savefig(img_buffer, format='png', transparent=False, dpi=dynamic_dpi)
+
+    img_buffer.seek(0)
+    plot_data = base64.b64encode(img_buffer.getvalue()).decode('utf-8')
+    plt.close(fig)
+
+    return plot_data
 
 def create_comparison_chart(data_1, data_2, symbol1='Symbol 1', symbol2='Symbol 2', resolution='5 mins'):
     candles_1 = data_1.get('candles', [])
@@ -295,6 +371,92 @@ def create_comparison_chart(data_1, data_2, symbol1='Symbol 1', symbol2='Symbol 
 
     return plot_data
 
+# --- PLOTLY COMPARISON CHART FUNCTION (create_comparison_chart_plotly) (Unchanged) ---
+def create_comparison_chart_plotly(data_1, data_2, symbol1='Symbol 1', symbol2='Symbol 2', resolution='5 mins'):
+    """
+    Generates an interactive price comparison chart using Plotly.
+    Returns:
+        Plotly figure rendered as an HTML div string.
+    """
+    candles_1 = data_1.get('candles', [])
+    timestamps_1 = [datetime.datetime.fromtimestamp(c[0]) for c in candles_1]
+    closing_prices_1 = [c[4] for c in candles_1]
+
+    candles_2 = data_2.get('candles', [])
+    timestamps_2 = [datetime.datetime.fromtimestamp(c[0]) for c in candles_2]
+    closing_prices_2 = [c[4] for c in candles_2]
+
+    if not timestamps_1 and not timestamps_2:
+        return None
+
+    # Create figure with secondary y-axis
+    fig = make_subplots(specs=[[{"secondary_y": True}]])
+
+    # Trace 1: Symbol 1 Price (Primary Y-axis)
+    if timestamps_1:
+        fig.add_trace(
+            go.Scatter(x=timestamps_1, y=closing_prices_1, name=f'{symbol1} Price', line=dict(color='#00C853', width=2)),
+            secondary_y=False,
+        )
+
+    # Trace 2: Symbol 2 Price (Secondary Y-axis)
+    if timestamps_2:
+        fig.add_trace(
+            go.Scatter(x=timestamps_2, y=closing_prices_2, name=f'{symbol2} Price', line=dict(color='#FF5255', width=2, dash='dash')),
+            secondary_y=True,
+        )
+
+    # Update layout for a dark theme and better aesthetics
+    fig.update_layout(
+        title={
+            'text': f'Interactive Price Comparison: {symbol1} vs {symbol2} ({resolution})',
+            'y':0.9,
+            'x':0.5,
+            'xanchor': 'center',
+            'yanchor': 'top',
+            'font': dict(size=20, color='white')
+        },
+        plot_bgcolor='#1e1e1e',
+        paper_bgcolor='#1e1e1e',
+        font=dict(color='white'),
+        hovermode="x unified",
+        margin=dict(t=50, b=50, l=50, r=50),
+        xaxis_title=f'Time ({resolution} Intervals)',
+        xaxis=dict(showgrid=True, gridcolor='#333', zeroline=False),
+        # --- PRIMARY Y-AXIS CORRECTION APPLIED HERE ---
+        yaxis=dict(
+            showgrid=True,
+            gridcolor='#333',
+            title=dict(
+                text=f'Price ({symbol1})',
+                font=dict(color='#00C853') # Correct: title is a dict with text and font
+            ),
+            tickfont=dict(color='#00C853')
+        ),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+    )
+
+    # --- SECONDARY Y-AXIS CORRECTION APPLIED HERE ---
+    if timestamps_2:
+        fig.update_yaxes(
+            # Correct: Use 'title' dictionary with 'text' and 'font' sub-dictionary
+            title=dict(
+                text=f'Price ({symbol2})',
+                font=dict(color='#FF5255')
+            ),
+            tickfont=dict(color='#FF5255'),
+            secondary_y=True,
+            showgrid=False # Only show grid for the primary axis
+        )
+
+    # Hide secondary y-axis if no data for symbol 2
+    if not timestamps_2:
+        fig.update_yaxes(secondary_y=True, visible=False)
+
+    # Return the HTML for embedding, excluding full HTML tags and including JS via CDN
+    return fig.to_html(full_html=False, include_plotlyjs='cdn')
+
+
 def get_chart_dpi(resolution):
     """Sets a DPI for Matplotlib based on the selected resolution for quality control."""
     resolution = resolution.lower()
@@ -331,21 +493,42 @@ def get_refresh_interval_seconds(resolution_str):
 # --- END Utility Functions ---
 
 
+def retres_value(value):
+    cases = {
+        "1 min": "1",
+        "3 mins": "3",
+        "5 mins": "5",
+        "15 mins": "15",
+        "30 mins": "30",
+        "1 hour": "60",
+        "2 hours": "120",
+        "4 hours": "30",
+        "1 day": "1D"
+
+    }
+    return cases.get(value, "5")
+
+
 @app.route('/', methods=['GET', 'POST'])
 def home():
     plot_data = None
     oi_plot_data = None
+    plotly_plot_data = None
     cross_alert = None
 
     # Get metadata from the global OPTIONS_DATA for default values and dropdown
-    expiry_data = OPTIONS_DATA.get('data', {}).get('expiryData', [])
+    options_data = OPTIONS_DATA
+    expiry_data = options_data.get('data', {}).get('expiryData', [])
     default_expiry = expiry_data[0]['expiry'] if expiry_data else 'N/A'
 
     # Attempt to derive default index name (e.g., NIFTY50)
-    options_chain = OPTIONS_DATA.get('data', {}).get('optionsChain', [])
+    options_chain = options_data.get('data', {}).get('optionsChain', [])
+
+    # Find the index record (first record with strike_price = -1 and a description)
+    index_record = next((d for d in options_chain if d.get('strike_price', -1) == -1 and 'description' in d), {})
     default_index = 'NIFTY50'
-    if options_chain and 'description' in options_chain[0]:
-        default_index = options_chain[0]['description'].split('-')[0]
+    if index_record and 'description' in index_record:
+        default_index = index_record['description'].split('-')[0]
 
     # Initialize input values
     input_values = {
@@ -365,19 +548,22 @@ def home():
     # Initialize data snapshot values
     latest_price_1 = 'N/A'
     latest_price_2 = 'N/A'
-    total_call_oi = OPTIONS_DATA.get('data', {}).get('callOi', 'N/A')
-    total_put_oi = OPTIONS_DATA.get('data', {}).get('putOi', 'N/A')
+    total_call_oi = options_data.get('data', {}).get('callOi', 'N/A')
+    total_put_oi = options_data.get('data', {}).get('putOi', 'N/A')
 
-    # Initialize Max OI Snapshot values
-    max_call_oi_strike = 'N/A'
-    max_call_oi_value = 'N/A'
-    max_put_oi_strike = 'N/A'
-    max_put_oi_value = 'N/A'
+    # --- New Data Extraction for User Request ---
+    indiavix_data = options_data.get('data', {}).get('indiavixData', {})
+
+    # Data from the first optionsChain record (the index/stock record)
+    first_option_fp = index_record.get('fp', 'N/A')
+    first_option_fpch = index_record.get('fpch', 'N/A')
+    first_option_ltp = index_record.get('ltp', 'N/A')    # NEW
+    first_option_ltpch = index_record.get('ltpch', 'N/A') # NEW
+    # -------------------------------------------
 
     data1 = DUMMY_DATA_1
     data2 = DUMMY_DATA_2
-    options_data = OPTIONS_DATA
-
+    options_data = options_data
 
     # Handle form submission
     if request.method == 'POST':
@@ -403,10 +589,11 @@ def home():
             input_values['refresh_interval'] = str(default_interval_s)
 
         # --- Data Processing ---
-
+        res=retres_value(input_values['resolution'])
+        #print("res=",res)
         res_data=t1.responseData(input_values['redirect_uri'],input_values['client_id'],input_values['secret_key'],
                               input_values['token'],input_values['symbol1'] ,input_values['symbol2'],input_values['days'],
-                                 input_values['resolution'], input_values['index_name'] )
+                                 "5", input_values['index_name'] )
         #print(res_data)
         if(res_data[0] is None or res_data[1] is None or res_data[2] is None):
             data1 = DUMMY_DATA_1
@@ -419,33 +606,49 @@ def home():
         total_call_oi = options_data.get('data', {}).get('callOi', 'N/A')
         total_put_oi = options_data.get('data', {}).get('putOi', 'N/A')
 
+        #options_data = options_data
+        expiry_data = options_data.get('data', {}).get('expiryData', [])
+        default_expiry = expiry_data[0]['expiry'] if expiry_data else 'N/A'
+
+        # Attempt to derive default index name (e.g., NIFTY50)
+        options_chain = options_data.get('data', {}).get('optionsChain', [])
+
+        # Find the index record (first record with strike_price = -1 and a description)
+        index_record = next((d for d in options_chain if d.get('strike_price', -1) == -1 and 'description' in d), {})
+        default_index = 'NIFTY50'
+        if index_record and 'description' in index_record:
+            default_index = index_record['description'].split('-')[0]
+
+
+        # --- New Data Extraction for User Request ---
+        indiavix_data = options_data.get('data', {}).get('indiavixData', {})
+
+        # Data from the first optionsChain record (the index/stock record)
+        first_option_fp = index_record.get('fp', 'N/A')
+        first_option_fpch = index_record.get('fpch', 'N/A')
+        first_option_ltp = index_record.get('ltp', 'N/A')    # NEW
+        first_option_ltpch = index_record.get('ltpch', 'N/A') # NEW
+        # -------------------------------------------
+
         # Latest Price Snapshot
         latest_price_1 = data1['candles'][-1][4] if data1.get('candles') and data1['candles'] else 'N/A'
         latest_price_2 = data2['candles'][-1][4] if data2.get('candles') and data2['candles'] else 'N/A'
-        #print(latest_price_1,latest_price_2)
+
 
         # Check for the crossing alert
         cross_alert = check_for_cross_alert(data1, data2)
 
-        # --- NEW: Extracting Max OI Strikes and Values for Snapshot ---
-        options_chain_snapshot = options_data.get('data', {}).get('optionsChain', [])
-        call_oi_entries = [d for d in options_chain_snapshot if d.get('option_type') == 'CE' and d.get('oi') is not None and d.get('strike_price') is not None]
-        put_oi_entries = [d for d in options_chain_snapshot if d.get('option_type') == 'PE' and d.get('oi') is not None and d.get('strike_price') is not None]
-
-        if call_oi_entries:
-            max_ce_entry = max(call_oi_entries, key=lambda x: x['oi'])
-            max_call_oi_strike = max_ce_entry.get('strike_price', 'N/A')
-            max_call_oi_value = max_ce_entry.get('oi', 'N/A')
-
-        if put_oi_entries:
-            max_pe_entry = max(put_oi_entries, key=lambda x: x['oi'])
-            max_put_oi_strike = max_pe_entry.get('strike_price', 'N/A')
-            max_put_oi_value = max_pe_entry.get('oi', 'N/A')
-        # --- END NEW MAX OI EXTRACTION ---
-
-
-        # Generate Price Comparison Chart
+        # Generate Price Comparison Chart (Matplotlib)
         plot_data = create_comparison_chart(
+            data1,
+            data2,
+            input_values['symbol1'],
+            input_values['symbol2'],
+            input_values['resolution']
+        )
+
+        # Generate Price Comparison Chart (Plotly)
+        plotly_plot_data = create_comparison_chart_plotly(
             data1,
             data2,
             input_values['symbol1'],
@@ -469,30 +672,15 @@ def home():
         latest_price_1 = data1['candles'][-1][4] if data1.get('candles') and data1['candles'] else 'N/A'
         latest_price_2 = data2['candles'][-1][4] if data2.get('candles') and data2['candles'] else 'N/A'
 
-        # --- NEW: Extracting Max OI Strikes and Values for Snapshot (Initial Load) ---
-        options_chain_snapshot = options_data.get('data', {}).get('optionsChain', [])
-        call_oi_entries = [d for d in options_chain_snapshot if d.get('option_type') == 'CE' and d.get('oi') is not None and d.get('strike_price') is not None]
-        put_oi_entries = [d for d in options_chain_snapshot if d.get('option_type') == 'PE' and d.get('oi') is not None and d.get('strike_price') is not None]
-
-        if call_oi_entries:
-            max_ce_entry = max(call_oi_entries, key=lambda x: x['oi'])
-            max_call_oi_strike = max_ce_entry.get('strike_price', 'N/A')
-            max_call_oi_value = max_ce_entry.get('oi', 'N/A')
-
-        if put_oi_entries:
-            max_pe_entry = max(put_oi_entries, key=lambda x: x['oi'])
-            max_put_oi_strike = max_pe_entry.get('strike_price', 'N/A')
-            max_put_oi_value = max_pe_entry.get('oi', 'N/A')
-        # --- END NEW MAX OI EXTRACTION ---
-
         # Generate initial plots
         plot_data = create_comparison_chart(data1, data2)
+        plotly_plot_data = create_comparison_chart_plotly(data1, data2)
         oi_plot_data = create_oi_bar_chart(options_data, input_values['index_name'], input_values['selected_expiry'])
 
 
     refresh_interval_ms = int(input_values['refresh_interval']) * 1000
 
-    # --- HTML Template (UPDATED to include Max OI in Snapshot) ---
+    # --- HTML Template (UPDATED) ---
     template_html = '''
         <!doctype html>
         <html lang="en">
@@ -602,7 +790,7 @@ def home():
                   background-color: #FF5255; /* Red */
                   color: black;
               }
-              .data-snapshot {
+              .data-snapshot, .market-data-snapshot { /* Combined style */
                   background-color: #1e1e1e;
                   padding: 15px 20px;
                   border-radius: 15px;
@@ -611,9 +799,9 @@ def home():
               }
               .snapshot-row {
                   display: flex;
+                  flex-wrap: wrap;
                   gap: 40px;
                   margin-top: 10px;
-                  justify-content: space-around;
               }
             </style>
           </head>
@@ -665,14 +853,17 @@ def home():
                             </div>
                             <div class="input-group">
                                 <label for="resolution">Resolution (Chart Bars):</label>
-                                                        <select id="resolution" name="resolution">
-                           <option value="1" {% if input_values['resolution'] == '1' %}selected{% endif %}>1 min</option>
-                           <option value="5" {% if input_values['resolution'] == '5' %}selected{% endif %}>5 mins</option>
-                           <option value="15" {% if input_values['resolution'] == '15' %}selected{% endif %}>15 mins</option>
-                           <option value="30" {% if input_values['resolution'] == '30' %}selected{% endif %}>30 mins</option>
-                           <option value="60" {% if input_values['resolution'] == '60' %}selected{% endif %}>1 hour</option>
-                           <option value="1D" {% if input_values['resolution'] == '1D' %}selected{% endif %}>1 day</option>
-                        </select>
+                                <select id="resolution" name="resolution">
+                                    <option value="1 min" {% if input_values['resolution'] == '1 min' %}selected{% endif %}>1 min</option>
+                                    <option value="3 mins" {% if input_values['resolution'] == '3 mins' %}selected{% endif %}>3 mins</option>
+                                    <option value="5 mins" {% if input_values['resolution'] == '5 mins' %}selected{% endif %}>5 mins</option>
+                                    <option value="15 mins" {% if input_values['resolution'] == '15 mins' %}selected{% endif %}>15 mins</option>
+                                    <option value="30 mins" {% if input_values['resolution'] == '30 mins' %}selected{% endif %}>30 mins</option>
+                                    <option value="1 hour" {% if input_values['resolution'] == '1 hour' %}selected{% endif %}>1 hour</option>
+                                    <option value="2 hours" {% if input_values['resolution'] == '2 hours' %}selected{% endif %}>2 hours</option>
+                                    <option value="4 hours" {% if input_values['resolution'] == '4 hours' %}selected{% endif %}>4 hours</option>
+                                    <option value="1 day" {% if input_values['resolution'] == '1 day' %}selected{% endif %}>1 day</option>
+                                </select>
                             </div>
                              <div class="input-group">
                                 <label for="refresh_interval">Refresh Interval (Secs):</label>
@@ -703,38 +894,37 @@ def home():
                     </form>
                 </div>
                 
-                {% if plot_data %}
+                {% if plot_data or plotly_plot_data %}
                 
+                <div class="market-data-snapshot">
+                    <h3 style="color: #FFD700; margin-top: 0;">🌐 Key Market Data Snapshot</h3>
+                    <div class="snapshot-row">
+                        <p><strong>India VIX (LTP):</strong> <span style="font-size: 1.2em; color: #FFA500;">{{ indiavix_data.ltp }}</span></p>
+                        <p><strong>India VIX (% Ch):</strong> <span style="font-size: 1.2em; color: {% if indiavix_data.ltpchp|float > 0 %}#00C853{% else %}#FF5255{% endif %};">{{ indiavix_data.ltpchp }}%</span></p>
+                    </div>
+                    <hr style="border: 0; border-top: 1px solid #333; margin: 10px 0;">
+                    <div class="snapshot-row">
+                        <p><strong>{{ input_values['index_name'] }} (LTP):</strong> <span style="font-size: 1.2em; color: #00C853;">{{ first_option_ltp }}</span></p>
+                        <p><strong>{{ input_values['index_name'] }} (LTP Ch):</strong> <span style="font-size: 1.2em; color: {% if first_option_ltpch|float > 0 %}#00C853{% else %}#FF5255{% endif %};">{{ first_option_ltpch }}</span></p>
+                        <p><strong>{{ input_values['index_name'] }} (Fair Price):</strong> <span style="font-size: 1.2em; color: #90CAF9;">{{ first_option_fp }}</span></p>
+                        <p><strong>{{ input_values['index_name'] }} (Fair Price Ch):</strong> <span style="font-size: 1.2em; color: {% if first_option_fpch|float > 0 %}#00C853{% else %}#FF5255{% endif %};">{{ first_option_fpch }}</span></p>
+                    </div>
+                    <div style="font-size: 0.9em; margin-top: 10px; color: #a0a0a0;">
+                        Full IndiaVIX Data: <code>{{ indiavix_data }}</code>
+                    </div>
+                </div>
+
                 <div class="data-snapshot">
-                    <h3 style="color: #00B0FF; margin-top: 0;">📊 Latest Data Snapshot</h3>
+                    <h3 style="color: #00B0FF; margin-top: 0;">📊 Comparison Data Snapshot</h3>
                     <div class="snapshot-row">
                         <p><strong>{{ input_values['symbol1'] }} (Last Close):</strong> <span style="font-size: 1.2em; color: #00C853;">{{ latest_price_1 }}</span></p>
                         <p><strong>{{ input_values['symbol2'] }} (Last Close):</strong> <span style="font-size: 1.2em; color: #FF5255;">{{ latest_price_2 }}</span></p>
                     </div>
                     <div class="snapshot-row">
-                        <p><strong>Total Call OI:</strong> <span style="font-size: 1.2em; color: #FF5255;">{{ "{:,}".format(total_call_oi) if total_call_oi != 'N/A' and total_call_oi is not none else 'N/A' }}</span></p>
-                        <p><strong>Total Put OI:</strong> <span style="font-size: 1.2em; color: #00C853;">{{ "{:,}".format(total_put_oi) if total_put_oi != 'N/A' and total_put_oi is not none else 'N/A' }}</span></p>
+                        <p><strong>Total Call OI:</strong> <span style="font-size: 1.2em; color: #FF5255;">{{ "{:,}".format(total_call_oi) if total_call_oi != 'N/A' else 'N/A' }}</span></p>
+                        <p><strong>Total Put OI:</strong> <span style="font-size: 1.2em; color: #00C853;">{{ "{:,}".format(total_put_oi) if total_put_oi != 'N/A' else 'N/A' }}</span></p>
                     </div>
-                    
-                    <hr style="border-top: 1px solid #333; margin: 10px 0;">
-                    <h4 style="color: #FFD700; margin-bottom: 5px;">Max Open Interest (Resistance & Support)</h4>
-                    <div class="snapshot-row">
-                        <p>
-                            <strong>Max Call OI (Resistance):</strong> 
-                            <span style="font-size: 1.1em; color: #FF5255;">
-                                {{ "{:,}".format(max_call_oi_value) if max_call_oi_value != 'N/A' and max_call_oi_value is not none else 'N/A' }} 
-                                {% if max_call_oi_strike != 'N/A' %} @ Strike: {{ max_call_oi_strike }}{% endif %}
-                            </span>
-                        </p>
-                        <p>
-                            <strong>Max Put OI (Support):</strong> 
-                            <span style="font-size: 1.1em; color: #00C853;">
-                                {{ "{:,}".format(max_put_oi_value) if max_put_oi_value != 'N/A' and max_put_oi_value is not none else 'N/A' }} 
-                                {% if max_put_oi_strike != 'N/A' %} @ Strike: {{ max_put_oi_strike }}{% endif %}
-                            </span>
-                        </p>
-                    </div>
-                    </div>
+                </div>
 
                 {% if cross_alert == 'Cross Up' %}
                 <div class="alert-box alert-up">
@@ -745,16 +935,33 @@ def home():
                     ⬇️ CROSS DOWN ALERT! {{ input_values['symbol1'] }} has crossed **BELOW** {{ input_values['symbol2'] }}! 📉
                 </div>
                 {% endif %}
-                
-                <div class="chart-container">
-                    <h2>Price Comparison Chart</h2>
+
+                {% if plot_data %}
+<!--                <div class="chart-container">
+                    <h2>Price Comparison Chart (Matplotlib)</h2>
                     <p>Last Updated: {{ now }}. Refreshing every {{ input_values['refresh_interval'] }} seconds. Chart DPI: {{ get_chart_dpi(input_values['resolution']) }}.</p>
                     <img src="data:image/png;base64,{{ plot_data }}" alt="Price Comparison Chart">
+                </div>-->
+                {% endif %}
+                
+
+                {% if plotly_plot_data %}
+                <div class="chart-container">
+                    <h2>Interactive Price Comparison Chart (Plotly)</h2>
+                    <h2>Price Comparison Chart (Matplotlib)</h2>
+                    <p>Last Updated: {{ now }}. Refreshing every {{ input_values['refresh_interval'] }} seconds. Chart DPI: {{ get_chart_dpi(input_values['resolution']) }}.</p>
+
+                    <div id="plotly-chart">
+                        {{ plotly_plot_data | safe }}
+                    </div>
                 </div>
+                {% endif %}
+                
+                
                 
                 {% if oi_plot_data %}
                 <div class="chart-container">
-                    <h2>Options Open Interest (OI) Bar Chart (with Support/Resistance Annotations)</h2>
+                    <h2>Options Open Interest (OI) Bar Chart</h2>
                     <img src="data:image/png;base64,{{ oi_plot_data }}" alt="Open Interest Bar Chart">
                 </div>
                 {% endif %}
@@ -771,30 +978,11 @@ def home():
             </div>
 
             <script>
-                // Correct for Python's resolution string inconsistency in the template
-                const resolutionSelect = document.getElementById('resolution');
-                let selectedResolutionValue = resolutionSelect.value;
-                if (!selectedResolutionValue.includes(' ')) {
-                    if (selectedResolutionValue === '1D') {
-                        resolutionSelect.value = '1 day';
-                    } else if (selectedResolutionValue === '1' || selectedResolutionValue === '5' || selectedResolutionValue === '15' || selectedResolutionValue === '30') {
-                         resolutionSelect.value = selectedResolutionValue + ' mins';
-                    } else if (selectedResolutionValue === '60') {
-                        resolutionSelect.value = '60 mins';
-                    }
-                }
-                
                 const refreshIntervalMs = {{ refresh_interval_ms }};
                 const dataForm = document.getElementById('dataForm');
                 
                 if (refreshIntervalMs > 0) {
                     function autoRefresh() {
-                        // Create a temporary input to trick Flask into thinking the request is a POST submission
-                        const tempInput = document.createElement('input');
-                        tempInput.type = 'hidden';
-                        tempInput.name = 'auto_refresh';
-                        tempInput.value = 'true';
-                        dataForm.appendChild(tempInput);
                         dataForm.submit();
                     }
 
@@ -811,6 +999,7 @@ def home():
         template_html,
         plot_data=plot_data,
         oi_plot_data=oi_plot_data,
+        plotly_plot_data=plotly_plot_data,
         input_values=input_values,
         refresh_interval_ms=refresh_interval_ms,
         get_chart_dpi=get_chart_dpi,
@@ -820,16 +1009,13 @@ def home():
         latest_price_2=latest_price_2,
         total_call_oi=total_call_oi,
         total_put_oi=total_put_oi,
-        # --- NEW VALUES PASSED TO TEMPLATE ---
-        max_call_oi_strike=max_call_oi_strike,
-        max_call_oi_value=max_call_oi_value,
-        max_put_oi_strike=max_put_oi_strike,
-        max_put_oi_value=max_put_oi_value,
-        # --- END NEW VALUES ---
+        indiavix_data=indiavix_data,
+        first_option_fp=first_option_fp,
+        first_option_fpch=first_option_fpch,
+        first_option_ltp=first_option_ltp,    # Added to template context
+        first_option_ltpch=first_option_ltpch, # Added to template context
         now=datetime.datetime.now().strftime('%H:%M:%S')
     )
 
 if __name__ == '__main__':
-    # Setting debug to False when using 'Agg' backend in production is recommended,
-    # but kept as True for development purposes.
     app.run(debug=True)
