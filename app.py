@@ -31,7 +31,7 @@ OPTIONS_DATA = {'code': 200, 'data': {'callOi': 185190600, 'expiryData': [{'date
 
 # --- NEW TRADING INDICATOR FUNCTIONS ---
 
-def calculate_supertrend(df, period=5, multiplier=1):
+def calculate_supertrend(df, period=1o, multiplier=3):
     """
     Calculates the Supertrend indicator line and its signal (1=Up/Buy, -1=Down/Sell).
     The DataFrame must contain 'high', 'low', and 'close' columns.
@@ -335,7 +335,7 @@ def create_comparison_chart(data_1, data_2, symbol1='Symbol 1', symbol2='Symbol 
 
     if not df1.empty:
         # Calculate Supertrend (using period=7 for the short dummy data)
-        df1 = calculate_supertrend(df1, period=7, multiplier=3)
+        df1 = calculate_supertrend(df1, period=10, multiplier=3)
 
         # Extract the calculated data
         supertrend_line_1 = df1['Supertrend']
@@ -356,7 +356,7 @@ def create_comparison_chart(data_1, data_2, symbol1='Symbol 1', symbol2='Symbol 
 
     if not df2.empty:
         # Calculate Supertrend (using period=7 for the short dummy data)
-        df2 = calculate_supertrend(df2, period=7, multiplier=3)
+        df2 = calculate_supertrend(df2, period=10, multiplier=3)
 
         # Extract the calculated data
         supertrend_line_2 = df2['Supertrend']
