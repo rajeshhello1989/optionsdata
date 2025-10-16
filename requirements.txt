@@ -3,3 +3,4 @@ matplotlib
 gunicorn
 fyers-apiv3
 pandas
+plotly
