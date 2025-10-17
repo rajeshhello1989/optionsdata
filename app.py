@@ -312,7 +312,7 @@ def create_oi_bar_chart(options_data, index_name, selected_expiry):
 
     # --- Save Plot to Memory and Encode ---
     img_buffer = io.BytesIO()
-    plt.savefig(img_buffer, format='jpeg', dpi=120, quality=90)
+    plt.savefig(img_buffer, format='jpeg', dpi=120)
     img_buffer.seek(0)
     plot_data = base64.b64encode(img_buffer.getvalue()).decode('utf-8')
     plt.close(fig)
@@ -463,7 +463,7 @@ def create_comparison_chart(data_1, data_2, symbol1='Symbol 1', symbol2='Symbol 
 
     img_buffer = io.BytesIO()
     dynamic_dpi = get_chart_dpi(resolution)
-    plt.savefig(img_buffer, format='jpeg', dpi=dynamic_dpi, quality=90)
+    plt.savefig(img_buffer, format='jpeg', dpi=dynamic_dpi)
 
     img_buffer.seek(0)
     plot_data = base64.b64encode(img_buffer.getvalue()).decode('utf-8')
