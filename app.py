@@ -312,7 +312,7 @@ def create_oi_bar_chart(options_data, index_name, selected_expiry):
 
     # --- Save Plot to Memory and Encode ---
     img_buffer = io.BytesIO()
-    plt.savefig(img_buffer, format='png', dpi=120, bbox_inches='tight') 
+    plt.savefig(img_buffer, format='jpeg', dpi=120, quality=90)
     img_buffer.seek(0)
     plot_data = base64.b64encode(img_buffer.getvalue()).decode('utf-8')
     plt.close(fig)
@@ -463,7 +463,7 @@ def create_comparison_chart(data_1, data_2, symbol1='Symbol 1', symbol2='Symbol 
 
     img_buffer = io.BytesIO()
     dynamic_dpi = get_chart_dpi(resolution)
-    plt.savefig(img_buffer, format='png', dpi=dynamic_dpi, bbox_inches='tight')
+    plt.savefig(img_buffer, format='jpeg', dpi=dynamic_dpi, quality=90)
 
     img_buffer.seek(0)
     plot_data = base64.b64encode(img_buffer.getvalue()).decode('utf-8')
@@ -1040,7 +1040,7 @@ def home():
                <div class="chart-container">
                     <h2>Price Comparison Chart (Matplotlib)</h2>
                     <p>Last Updated: {{ now }}. Refreshing every {{ input_values['refresh_interval'] }} seconds. Chart DPI: {{ get_chart_dpi(input_values['resolution']) }}.</p>
-                    <img src="data:image/png;base64,{{ plot_data }}" alt="Price Comparison Chart">
+                    <img src="data:image/jpeg;base64,{{ plot_data }}" alt="Price Comparison Chart">
                 </div>
                 {% endif %}
                 
@@ -1062,7 +1062,7 @@ def home():
                 {% if oi_plot_data %}
                 <div class="chart-container">
                     <h2>Options Open Interest (OI) Bar Chart</h2>
-                    <img src="data:image/png;base64,{{ oi_plot_data }}" alt="Open Interest Bar Chart">
+                    <img src="data:image/jpeg;base64,{{ oi_plot_data }}" alt="Open Interest Bar Chart">
                 </div>
                 {% endif %}
                 
