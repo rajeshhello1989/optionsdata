@@ -31,7 +31,7 @@ OPTIONS_DATA = {'code': 200, 'data': {'callOi': 185190600, 'expiryData': [{'date
 
 # --- NEW TRADING INDICATOR FUNCTIONS ---
 
-def calculate_supertrend(df, period=1o, multiplier=3):
+def calculate_supertrend(df, period=10, multiplier=3):
     """
     Calculates the Supertrend indicator line and its signal (1=Up/Buy, -1=Down/Sell).
     The DataFrame must contain 'high', 'low', and 'close' columns.
