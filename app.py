@@ -312,7 +312,7 @@ def create_oi_bar_chart(options_data, index_name, selected_expiry):
 
     # --- Save Plot to Memory and Encode ---
     img_buffer = io.BytesIO()
-    plt.savefig(img_buffer, format='png', transparent=False, dpi=120)
+    plt.savefig(img_buffer, format='png', dpi=120, bbox_inches='tight') 
     img_buffer.seek(0)
     plot_data = base64.b64encode(img_buffer.getvalue()).decode('utf-8')
     plt.close(fig)
