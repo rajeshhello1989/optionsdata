@@ -463,7 +463,7 @@ def create_comparison_chart(data_1, data_2, symbol1='Symbol 1', symbol2='Symbol 
 
     img_buffer = io.BytesIO()
     dynamic_dpi = get_chart_dpi(resolution)
-    plt.savefig(img_buffer, format='png', transparent=False, dpi=dynamic_dpi)
+    plt.savefig(img_buffer, format='png', dpi=dynamic_dpi, bbox_inches='tight')
 
     img_buffer.seek(0)
     plot_data = base64.b64encode(img_buffer.getvalue()).decode('utf-8')
