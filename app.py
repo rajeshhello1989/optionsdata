@@ -630,7 +630,7 @@ def home():
         res_data=t1.responseData(input_values['redirect_uri'],input_values['client_id'],input_values['secret_key'],
                               input_values['token'],input_values['symbol1'] ,input_values['symbol2'],input_values['days'],
                                  "5", input_values['index_name'] )
-        print(res_data)
+        #print(res_data)
         if(res_data[0] is None or res_data[1] is None or res_data[2] is None):
             data1 = DUMMY_DATA_1
             data2 = DUMMY_DATA_2
