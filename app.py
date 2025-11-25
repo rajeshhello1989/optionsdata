@@ -821,7 +821,7 @@ def home():
     input_values = {
         'token': 'YOUR_ACCESS_TOKEN', 'redirect_uri': 'https://fy.autotest.com',
         'client_id': 'RIRG1NVT0G-100', 'secret_key': 'UMK5T6M9KR',
-        'symbol1': 'NSE:NIFTY50-INDEX', 'symbol2': 'NSE:NIFTY25NOV26000CE', 'days': '1',
+        'symbol1': 'NSE:NIFTY50-INDEX', 'symbol2': 'NSE:NIFTY25NOV26000CE', 'days': '0',
         'resolution': '5 mins', 'refresh_interval': '300',
         'index_name': 'NSE:NIFTY50-INDEX', 'selected_expiry': nearest_tuesday
     }
@@ -847,7 +847,7 @@ def home():
         input_values['secret_key'] = request.form.get('secret_key', 'UMK5T6M9KR')
         input_values['symbol1'] = request.form.get('symbol1', 'NSE:NIFTY50-INDEX')
         input_values['symbol2'] = request.form.get('symbol2', 'NSE:NIFTY25NOV26000CE')
-        input_values['days'] = request.form.get('days', '1')
+        input_values['days'] = request.form.get('days', '0')
         input_values['resolution'] = request.form.get('resolution', '5 mins')
         input_values['index_name'] = request.form.get('index_name', default_index)
         input_values['selected_expiry'] = request.form.get('selected_expiry', nearest_tuesday)
@@ -963,7 +963,7 @@ def home():
                             <div class="input-group"><label for="symbol2">Symbol 2:</label><input type="text" id="symbol2" name="symbol2" value="{{ input_values['symbol2'] }}" required></div>
                         </div>
                         <div class="form-row">
-                             <div class="input-group"><label for="days">Data Days:</label><input type="number" id="days" name="days" value="{{ input_values['days'] }}" min="1" required></div>
+                             <div class="input-group"><label for="days">Data Days:</label><input type="number" id="days" name="days" value="{{ input_values['days'] }}" min="0" required></div>
                             <div class="input-group"><label for="resolution">Resolution (Chart Bars):</label>
                                 <select id="resolution" name="resolution">
                                     <option value="1 min" {% if input_values['resolution'] == '1 min' %}selected{% endif %}>1 min</option>
